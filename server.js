@@ -15,6 +15,8 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:5173", // Vite default
   "http://localhost:3000", // Create React App default
+  "https://lottery-frontend-j422lcvpk-nikhils-projects-2570a626.vercel.app",
+  "https://lottery-frontend-j422lcvpk-nikhils-projects-2570a626.vercel.app",
   process.env.CLIENT_URL,
 ].filter(Boolean);
 
