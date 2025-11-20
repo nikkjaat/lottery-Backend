@@ -1,6 +1,5 @@
 const User = require("../models/User");
 const generateOTP = require("../utils/generateOTP");
-const { sendOTPEmail } = require("../utils/sendEmail");
 const jwt = require("jsonwebtoken");
 
 // Generate JWT Token
@@ -15,9 +14,17 @@ exports.sendSignupOTP = async (req, res) => {
   try {
     const { name, email } = req.body;
 
+    // Input validation
+    if (!name || !email) {
+      return res.status(400).json({
+        success: false,
+        error: "Name and email are required",
+      });
+    }
+
     // Check if user already exists
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
+    if (existingUser && existingUser.isVerified) {
       return res.status(400).json({
         success: false,
         error: "User already exists with this email",
@@ -27,33 +34,40 @@ exports.sendSignupOTP = async (req, res) => {
     const otp = generateOTP();
     const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
 
-    // Create unverified user
-    const user = await User.create({
-      name,
-      email,
-      otp,
-      otpExpires,
-      isVerified: false,
-    });
-
-    // Send OTP email
-    const emailSent = await sendOTPEmail(email, name, otp);
-
-    if (!emailSent) {
-      await User.findByIdAndDelete(user._id);
-      return res.status(500).json({
-        success: false,
-        error: "Failed to send OTP email",
+    // If user exists but not verified, update OTP
+    if (existingUser && !existingUser.isVerified) {
+      existingUser.otp = otp;
+      existingUser.otpExpires = otpExpires;
+      existingUser.name = name; // Update name if changed
+      await existingUser.save();
+    } else {
+      // Create new unverified user
+      await User.create({
+        name,
+        email,
+        otp,
+        otpExpires,
+        isVerified: false,
       });
     }
 
+    // Always send OTP in response (no email sending)
     res.status(200).json({
       success: true,
       message: "OTP sent successfully",
-      otp: process.env.NODE_ENV === "development" ? otp : undefined, // Send OTP only in development
+      otp: otp, // Always include OTP in response
     });
   } catch (error) {
     console.error("Send OTP error:", error);
+
+    // More specific error messages
+    if (error.name === "MongoNetworkError") {
+      return res.status(500).json({
+        success: false,
+        error: "Database connection error. Please try again.",
+      });
+    }
+
     res.status(500).json({
       success: false,
       error: "Server error while sending OTP",
@@ -148,20 +162,11 @@ exports.sendLoginOTP = async (req, res) => {
     user.otpExpires = otpExpires;
     await user.save();
 
-    // Send OTP email
-    const emailSent = await sendOTPEmail(email, user.name, otp);
-
-    if (!emailSent) {
-      return res.status(500).json({
-        success: false,
-        error: "Failed to send OTP email",
-      });
-    }
-
+    // Always send OTP in response (no email sending)
     res.status(200).json({
       success: true,
       message: "OTP sent successfully",
-      otp: process.env.NODE_ENV === "development" ? otp : undefined,
+      otp: otp, // Always include OTP in response
     });
   } catch (error) {
     console.error("Send login OTP error:", error);
